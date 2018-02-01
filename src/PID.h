@@ -1,5 +1,6 @@
 #ifndef PID_H
 #define PID_H
+#include <vector>
 
 class PID {
 public:
@@ -12,10 +13,36 @@ public:
 
   /*
   * Coefficients
-  */ 
+  */
   double Kp;
   double Ki;
   double Kd;
+
+  /*
+  * The previous cte value.
+  */
+  double cte_last;
+  bool initialized;
+  int twiddle_max;
+  int twiddle_counter;
+
+  bool twiddle_past_skip;
+  int twiddle_skip_first_max;
+  int twiddle_skip_counter;
+
+  double twiddle_error;
+  double twiddle_best_error;
+
+  std::vector<double> twiddle_p_values;
+  std::vector<double> twiddle_dp_values;
+
+  bool twiddle_done;
+
+  int twiddle_current_index;
+
+  bool twiddle_back_calc;
+
+  double current_sum;
 
   /*
   * Constructor

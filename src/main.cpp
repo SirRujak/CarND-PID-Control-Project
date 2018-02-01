@@ -33,9 +33,21 @@ int main()
   uWS::Hub h;
 
   PID pid;
-  // TODO: Initialize the pid variable.
+  // Initialize the pid variable.
+  //pid.Init(1.21018, 0.0172493, 6.26384);
+  //pid.Init(1.16, 0.013, 6.36);
+  //pid.Init(1.21018, 0.0172493, 8.46385);
+  //pid.Init(3.63433, 0.0584075, 28.8131);
+  //pid.Init(2.0, 0.04, 10.0);
+  pid.Init(1.43433, 0.00620688, 14.7539);
+
+  // This is to activate or deactivate twiddling.
+  // Set pid.twiddle_done to false to start twiddling.
+  pid.twiddle_done = true;
 
   h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+    bool use_d = true;
+    bool use_i = true;
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -52,15 +64,108 @@ int main()
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
           double steer_value;
           /*
-          * TODO: Calcuate steering value here, remember the steering value is
+          * Calcuate steering value here, remember the steering value is
           * [-1, 1].
-          * NOTE: Feel free to play around with the throttle and speed. Maybe use
+          * Feel free to play around with the throttle and speed. Maybe use
           * another PID controller to control the speed!
           */
-          
-          // DEBUG
-          std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
+          if (!pid.initialized) {
+            pid.cte_last = cte;
+            pid.initialized = true;
+          }
+          double diff_cte;
+          if (use_d) {
+            diff_cte = cte - pid.cte_last;
+            pid.cte_last = cte;
+          } else {
+            diff_cte = 0.0;
+          }
+          double int_cte;
+          if (use_i) {
+            pid.i_error += cte;
+            int_cte = pid.i_error;
+          } else {
+            int_cte = 0;
+          }
+          steer_value = - pid.Kp * cte - pid.Kd * diff_cte - pid.Ki * int_cte;
 
+          if (!pid.twiddle_done) {
+            if (pid.twiddle_counter > pid.twiddle_skip_first_max) {
+              pid.twiddle_error += cte * cte + std::abs(steer_value);
+            }
+            if (pid.twiddle_error > pid.twiddle_best_error) {
+              pid.twiddle_counter = pid.twiddle_max + 1;
+            }
+            pid.twiddle_counter += 1;
+            std::cout << "Twiddle counter: " << pid.twiddle_counter << std::endl;
+            if (pid.twiddle_counter > pid.twiddle_max) {
+              // We have completed a round.
+              pid.twiddle_max = 2000;
+              if (pid.twiddle_error < pid.twiddle_best_error){
+                // If our last twiddle gave better results.
+                pid.twiddle_back_calc = false;
+                pid.twiddle_best_error = pid.twiddle_error;
+                pid.twiddle_dp_values[pid.twiddle_current_index] *= 1.2;
+              } else {
+                if (!pid.twiddle_back_calc) {
+                  // We are on the forwards pass.
+                  pid.twiddle_p_values[pid.twiddle_current_index] -= 2.0 *
+                    pid.twiddle_dp_values[pid.twiddle_current_index];
+                  pid.twiddle_back_calc = true;
+                } else {
+                  pid.twiddle_p_values[pid.twiddle_current_index] +=
+                    pid.twiddle_dp_values[pid.twiddle_current_index];
+                  pid.twiddle_dp_values[pid.twiddle_current_index] *= 0.85;
+                  pid.twiddle_back_calc = false;
+                }
+              }
+
+              // Move to the next p value to twiddle.
+              if (!pid.twiddle_back_calc) {
+                pid.twiddle_current_index += 1;
+                if (pid.twiddle_current_index > 2) {
+                  pid.twiddle_current_index = 0;
+                }
+                // Add the current dp value to start the next round of tests.
+                pid.twiddle_p_values[pid.twiddle_current_index] +=
+                  pid.twiddle_dp_values[pid.twiddle_current_index];
+              }
+              pid.i_error = 0;
+              pid.twiddle_counter = 0;
+              pid.twiddle_skip_counter = 0;
+              pid.twiddle_past_skip = false;
+              pid.twiddle_error = 0;
+              pid.initialized = false;
+              pid.current_sum = pid.twiddle_dp_values[0] +
+                                   pid.twiddle_dp_values[1] +
+                                   pid.twiddle_dp_values[2];
+              if (pid.current_sum < 0.002) {
+                  pid.twiddle_done = true;
+                }
+              pid.Kp = pid.twiddle_p_values[0];
+              pid.Kd = pid.twiddle_p_values[1];
+              pid.Ki = pid.twiddle_p_values[2];
+              std::string reset_msg = "42[\"reset\",{}]";
+              ws.send(reset_msg.data(),reset_msg.length(), uWS::OpCode::TEXT);
+            }
+          }
+
+          /*
+          // DEBUG
+          std::cout << "On back calc? " << pid.twiddle_back_calc << std::endl;
+          std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
+          std::cout << "Current PD Sum: " << pid.current_sum << std::endl;
+          std::cout << "P: [" << pid.twiddle_p_values[0] << ", " <<
+                       pid.twiddle_p_values[1] << ", " <<
+                       pid.twiddle_p_values[2] << "]" << std::endl;
+          std::cout << pid.Kp << ", " << pid.Kd << ", " << pid.Ki << std::endl;
+          std::cout << "DP: [" << pid.twiddle_dp_values[0] << ", " <<
+                       pid.twiddle_dp_values[1] << ", " <<
+                       pid.twiddle_dp_values[2] << "]" << std::endl;
+          std::cout << "Error: " << pid.i_error << std::endl;
+          std::cout << "Twiddle Error: " << pid.twiddle_error << std::endl;
+          std::cout << "Twiddle Best: " << pid.twiddle_best_error << std::endl;
+          */
           json msgJson;
           msgJson["steering_angle"] = steer_value;
           msgJson["throttle"] = 0.3;
