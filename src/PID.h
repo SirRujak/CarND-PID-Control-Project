@@ -44,6 +44,9 @@ public:
 
   double current_sum;
 
+  bool use_i;
+  bool use_d;
+
   /*
   * Constructor
   */

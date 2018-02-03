@@ -37,10 +37,32 @@ void PID::Init(double Kp, double Ki, double Kd) {
   twiddle_back_calc = false;
 
   current_sum = 0.0;
+
+  use_i = false;
+  use_d = false;
 }
 
 void PID::UpdateError(double cte) {
+  if (!initialized) {
+    cte_last = cte;
+    initialized = true;
+  }
+  p_error = cte;
+  double diff_cte;
+  if (use_d) {
+    d_error = cte - cte_last;
+    cte_last = cte;
+  } else {
+    d_error = 0.0;
+  }
+  double int_cte;
+  if (use_i) {
+    i_error += cte;
+  } else {
+    i_error = 0;
+  }
 }
 
 double PID::TotalError() {
+  return - Kp * p_error - Kd * d_error - Ki * i_error;
 }

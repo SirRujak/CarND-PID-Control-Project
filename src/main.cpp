@@ -34,47 +34,52 @@ int main()
 
   PID pid;
   // Initialize the pid variable.
-  // These are values the tiddle algorithm arrived at.
-  // Unfortunately they tended towards far too high Kd values.
-  //pid.Init(1.21018, 0.0172493, 6.26384);
-  //pid.Init(1.16, 0.013, 6.36);
-  //pid.Init(1.21018, 0.0172493, 8.46385);
-  //pid.Init(3.63433, 0.0584075, 28.8131);
-  /*
-  This was manual testing.
-  //pid.Init(2.0, 0.04, 10.0);
-  // This one is final twiddle values.
-  //pid.Init(1.43433, 0.00620688, 14.7539);
-  pid.Init(1.43433, 0.0002, 8.5);
-  pid.Init(1.43433, 0.0002, 5.5);
-  pid.Init(1.43433, -0.0002, 8.5);
-  pid.Init(1.43433, 0.00002, 8.5);
-  pid.Init(1.43433, 0.000002, 8.5);
-  pid.Init(1.43433, 0.000002, 15.5);
-  pid.Init(1.43433, 0.02, 5.5);
-  pid.Init(1.43433, 0.2, 8.5);
-  pid.Init(1.43433, 0.1, 8.5);
-  pid.Init(2.43433, 0.1, 8.5);
-  pid.Init(2.0, 0.05, 8.5);
-  pid.Init(2.0, 0.05, 10.5);
-  pid.Init(0.025, 0.0, 0.0);
-  pid.Init(0.025, 0.0001, 0.0);
-  pid.Init(0.025, 0.0001, 2.9);
+  /* These are values the tiddle algorithm arrived at.
+   * Unfortunately they tended towards far too high Kd values.
+   * Through multiple runs of the twiddle algorithm the following
+   * PID values were found:
+        1.21018, 6.26384, 0.0172493
+        1.16, 6.36, 0.013
+        1.21018, 8.46385, 0.0172493
+        3.63433, 28.8131, 0.0584075
+        2.0, 10.0, 0.04
+        1.43433, 14.7539, 0.00620688
+  */
+  /*  After attempting twiddling without a steady solution
+   *  manual alteration was used to find the following:
 
-  pid.Init(0.025, 0.0004, 2.9);
+      1.43433, 0.0002, 8.5
+      1.43433, 0.0002, 5.5
+      1.43433, -0.0002, 8.5
+      1.43433, 0.00002, 8.5
+      1.43433, 0.000002, 8.5
+      1.43433, 0.000002, 15.5
+      1.43433, 0.02, 5.5
+      1.43433, 0.2, 8.5
+      1.43433, 0.1, 8.5
+      2.43433, 0.1, 8.5
+      2.0, 0.05, 8.5
+      2.0, 0.05, 10.5
+      0.025, 0.0, 0.0
+      0.025, 0.0001, 0.0
+      0.025, 0.0001, 2.9
 
-  pid.Init(0.125, 0.00025, 1.9);
+      0.025, 0.0004, 2.9
+
+      0.125, 0.00025, 1.9
   */
 
+  // The final PID values.
   pid.Init(0.14, 0.0004, 1.5);
 
   // This is to activate or deactivate twiddling.
   // Set pid.twiddle_done to false to start twiddling.
   pid.twiddle_done = true;
+  pid.use_d = true;
+  pid.use_i = true;
 
   h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
-    bool use_d = true;
-    bool use_i = true;
+
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -96,25 +101,8 @@ int main()
           * Feel free to play around with the throttle and speed. Maybe use
           * another PID controller to control the speed!
           */
-          if (!pid.initialized) {
-            pid.cte_last = cte;
-            pid.initialized = true;
-          }
-          double diff_cte;
-          if (use_d) {
-            diff_cte = cte - pid.cte_last;
-            pid.cte_last = cte;
-          } else {
-            diff_cte = 0.0;
-          }
-          double int_cte;
-          if (use_i) {
-            pid.i_error += cte;
-            int_cte = pid.i_error;
-          } else {
-            int_cte = 0;
-          }
-          steer_value = - pid.Kp * cte - pid.Kd * diff_cte - pid.Ki * int_cte;
+          pid.UpdateError(cte);
+          steer_value = pid.TotalError();
 
           if (!pid.twiddle_done) {
             if (pid.twiddle_counter > pid.twiddle_skip_first_max) {
